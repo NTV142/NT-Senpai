@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>NT Rhythm Grid</title>
+    <style>
+        body { margin: 0; background: #000; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; font-family: sans-serif; }
+        #container { position: relative; width: 360px; height: 675px; background: #fff; }
+        canvas { background: #fff; display: block; }
+        .ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.95); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 10; }
+        .btn { margin: 10px; padding: 15px 30px; background: #333; color: #fff; border: none; cursor: pointer; font-size: 18px; width: 200px; text-align: center; }
+        .setting-item { margin: 10px; font-size: 16px; color: #555; cursor: pointer; }
+        .input-wait { color: #ff0000; font-weight: bold; }
+        .placeholder { color: #ccc; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="screen-start" class="ui-layer">
+            <h1>NT Rhythm</h1>
+            <button class="btn" onclick="showScreen('screen-mode')">ゲーム開始</button>
+            <button class="btn" onclick="showScreen('screen-setting')">設定</button>
+        </div>
+
+        <div id="screen-mode" class="ui-layer hidden">
+            <button class="btn" onclick="startGame('normal')">ノーマルモード</button>
+            <button class="btn" onclick="showScreen('screen-start')">戻る</button>
+        </div>
+
+        <div id="screen-setting" class="ui-layer hidden">
+            <h2>設定</h2>
+            <div class="setting-item" onclick="toggleSound()">
+                サウンド：<span id="sound-status">オン</span>
+            </div>
+            <div class="setting-item" onclick="waitKeys()">
+                キー：<span id="keys-display" class="placeholder">デフォルト：DFJK</span>
+            </div>
+            <div class="setting-item" onclick="waitTime()">
+                時間：<span id="time-display" class="placeholder">デフォルト：20秒</span>
+            </div>
+            <button class="btn" onclick="showScreen('screen-start')">完了</button>
+        </div>
+
+        <canvas id="g"></canvas>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('g');
+        const ctx = canvas.getContext('2d');
+        const W = 360, H = 675;
+        const COLS = 4, SIZE = W / COLS;
+        canvas.width = W; canvas.height = H;
+
+        let nt = new Image(); nt.src = 'NT.png';
+        let tiles = [], score = 0, over = false, active = false;
+        
+        // 設定値
+        let config = { sound: true, keys: ['d','f','j','k'], time: 20 };
+        let timeLeft = 20;
+        let timerId = null;
+
+        // UI切り替え
+        function showScreen(id) {
+            document.querySelectorAll('.ui-layer').forEach(el => el.classList.add('hidden'));
+            document.getElementById(id).classList.remove('hidden');
+        }
+
+        // 設定操作
+        function toggleSound() {
+            config.sound = !config.sound;
+            document.getElementById('sound-status').innerText = config.sound ? 'オン' : 'オフ';
+        }
+
+        function waitKeys() {
+            const el = document.getElementById('keys-display');
+            el.innerText = '入力待ち...';
+            el.classList.remove('placeholder');
+            const newKeys = [];
+            const handler = (e) => {
+                newKeys.push(e.key.toLowerCase());
+                el.innerText = newKeys.join('').toUpperCase();
+                if (newKeys.length >= 4) {
+                    config.keys = newKeys;
+                    window.removeEventListener('keydown', handler);
+                }
+            };
+            window.addEventListener('keydown', handler);
+        }
+
+        function waitTime() {
+            const el = document.getElementById('time-display');
+            el.innerText = '数値入力...';
+            el.classList.remove('placeholder');
+            const input = prompt("秒数を入力してください", "20");
+            if (input) {
+                config.time = parseInt(input);
+                el.innerText = config.time + '秒';
+            }
+        }
+
+        // ゲームロジック
+        function addTile(y) {
+            tiles.push({ x: Math.floor(Math.random() * COLS), y: y });
+        }
+
+        function playSound() {
+            if (!config.sound) return;
+            let s = new Audio('SanSanVoice.mp3');
+            s.play().catch(()=>{});
+        }
+
+        function startGame(mode) {
+            showScreen('none');
+            tiles = []; score = 0; over = false; active = true;
+            timeLeft = config.time;
+            for (let i = 0; i < 8; i++) addTile(i);
+            
+            if (timerId) clearInterval(timerId);
+            timerId = setInterval(() => {
+                timeLeft--;
+                if (timeLeft <= 0) endGame();
+            }, 1000);
+            draw();
+        }
+
+        function endGame() {
+            over = true;
+            active = false;
+            clearInterval(timerId);
+        }
+
+        function draw() {
+            if (!active && !over) return;
+            ctx.clearRect(0, 0, W, H);
+            ctx.strokeStyle = '#ccc';
+            for (let i = 0; i <= COLS; i++) {
+                ctx.beginPath(); ctx.moveTo(i * SIZE, 0); ctx.lineTo(i * SIZE, H); ctx.stroke();
+            }
+            tiles.forEach(t => {
+                let yPos = H - (t.y + 1) * SIZE;
+                if (yPos < H) ctx.drawImage(nt, t.x * SIZE + 2, yPos + 2, SIZE - 4, SIZE - 4);
+            });
+
+            ctx.fillStyle = 'red'; ctx.font = 'bold 24px sans-serif';
+            ctx.fillText(`Score: ${score}`, 10, 35);
+            ctx.fillText(`Time: ${timeLeft}`, 250, 35);
+
+            if (over) {
+                ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0, 0, W, H);
+                ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
+                ctx.fillText('GAME OVER', W/2, H/2);
+                ctx.fillText('Click to Title', W/2, H/2 + 40);
+                ctx.textAlign = 'left';
+            } else {
+                requestAnimationFrame(draw);
+            }
+        }
+
+        canvas.onclick = () => { if (over) showScreen('screen-start'); };
+
+        window.onkeydown = (e) => {
+            if (!active || over) return;
+            const keyIdx = config.keys.indexOf(e.key.toLowerCase());
+            if (keyIdx !== -1 && tiles[0].x === keyIdx) {
+                tiles.shift();
+                tiles.forEach(t => t.y--);
+                addTile(tiles[tiles.length - 1].y + 1);
+                score++;
+                playSound();
+            } else if (keyIdx !== -1) {
+                endGame();
+            }
+        };
+
+        nt.onload = () => showScreen('screen-start');
+    </script>
+</body>
+</html>
