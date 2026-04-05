@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Custom Counter - NT Edition</title>
+    <style>
+        :root {
+            --bg-color: #fe027f;
+            --bg-opacity: 0.7; 
+            --edge-size: 45px;
+        }
+
+        body, html {
+            margin: 0; padding: 0;
+            width: 100%; height: 100%;
+            overflow: hidden;
+            background-color: #000;
+        }
+
+        #counter-container {
+            position: relative;
+            width: 100vw; height: 100vh;
+            background-color: var(--bg-color);
+            display: flex; align-items: center; justify-content: center;
+        }
+
+        #bg-icons-layer {
+            position: absolute;
+            top: var(--edge-size); left: var(--edge-size);
+            display: grid;
+            pointer-events: none;
+            opacity: var(--bg-opacity);
+            z-index: 1;
+            overflow: hidden; 
+        }
+
+        .bg-icon { width: 100%; height: 100%; object-fit: contain; display: block; }
+
+        .edge-img-btn {
+            position: absolute; z-index: 20;
+            border: none; cursor: pointer;
+            padding: 0; background: none;
+        }
+        
+        .edge-img-btn img { width: 100%; height: 100%; display: block; object-fit: fill; }
+
+        .top { top: 0; left: 0; width: 100%; height: var(--edge-size); }
+        .bottom { bottom: 0; left: 0; width: 100%; height: var(--edge-size); }
+        .left { top: 0; left: 0; width: var(--edge-size); height: 100%; }
+        .right { top: 0; right: 0; width: var(--edge-size); height: 100%; }
+    </style>
+</head>
+<body>
+
+    <div id="counter-container">
+        <button class="edge-img-btn top" onclick="changeValue(1)"><img src="上.png"></button>
+        <button class="edge-img-btn bottom" onclick="changeValue(-1)"><img src="下.png"></button>
+        <button class="edge-img-btn left" onclick="downloadCombinedImage()"><img src="左.png"></button>
+        <button class="edge-img-btn right" onclick="downloadCombinedImage()"><img src="右.png"></button>
+
+        <div id="bg-icons-layer"></div>
+    </div>
+
+    <script>
+        const config = {
+            currentValue: 15,
+            bgImagePath: 'image1.jpg',
+            baseSize: 1080 // 元画像の解像度
+        };
+
+        const bgLayer = document.getElementById('bg-icons-layer');
+        let currentCols = 0;
+        let currentRows = 0;
+
+        function updateCounter() {
+            bgLayer.innerHTML = '';
+            const count = config.currentValue;
+            if (count <= 0) return;
+
+            const availW = window.innerWidth - (45 * 2);
+            const availH = window.innerHeight - (45 * 2);
+
+            const area = availW * availH;
+            const singleArea = area / count;
+            const idealSize = Math.sqrt(singleArea * (availW / availH));
+            
+            currentCols = Math.max(1, Math.round(availW / idealSize));
+            currentRows = Math.ceil(count / currentCols);
+
+            const cellW = availW / currentCols;
+            const cellH = availH / currentRows;
+            const cellSize = Math.min(cellW, cellH);
+
+            bgLayer.style.width = `${availW}px`;
+            bgLayer.style.height = `${availH}px`;
+            bgLayer.style.gridTemplateColumns = `repeat(${currentCols}, ${cellSize}px)`;
+            bgLayer.style.gridAutoRows = `${cellSize}px`;
+            bgLayer.style.gap = "0px";
+
+            for (let i = 0; i < count; i++) {
+                const icon = document.createElement('img');
+                icon.src = config.bgImagePath;
+                icon.className = 'bg-icon';
+                bgLayer.appendChild(icon);
+            }
+        }
+
+        async function downloadCombinedImage() {
+            const count = config.currentValue;
+            if (count <= 0) return;
+
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+
+            // キャンバスサイズを (1080 * 列数) x (1080 * 行数) に設定
+            canvas.width = config.baseSize * currentCols;
+            canvas.height = config.baseSize * currentRows;
+
+            const img = new Image();
+            img.src = config.bgImagePath;
+
+            img.onload = () => {
+                for (let i = 0; i < count; i++) {
+                    const col = i % currentCols;
+                    const row = Math.floor(i / currentCols);
+                    // 1080pxの等倍で描画
+                    ctx.drawImage(img, col * config.baseSize, row * config.baseSize, config.baseSize, config.baseSize);
+                }
+
+                const link = document.createElement('a');
+                link.download = `combined_${count}pcs_${Date.now()}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            };
+        }
+
+        function changeValue(amount) {
+            config.currentValue = Math.max(0, config.currentValue + amount);
+            updateCounter();
+        }
+
+        window.addEventListener('resize', updateCounter);
+        window.onload = updateCounter;
+        updateCounter();
+    </script>
+</body>
+</html>
