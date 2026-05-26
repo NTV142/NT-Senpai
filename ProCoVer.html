@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>NT Rhythm Grid</title>
+<style>
+body { 
+margin: 0; 
+background: #fe027f; 
+display: flex; 
+justify-content: center; 
+align-items: center; 
+height: 100vh; 
+height: 100svh; 
+overflow: hidden; 
+font-family: sans-serif; 
+}
+#container { 
+position: relative; 
+width: 100vw;
+height: 100vh;
+max-width: calc(100vh * (360 / 675));
+max-height: calc(100vw * (675 / 360));
+background: #fff;
+box-shadow: 0 0 30px rgba(0,0,0,0.4);
+}
+canvas { 
+width: 100%;
+height: 100%;
+display: block; 
+touch-action: none; 
+}
+.ui-layer { 
+position: absolute; 
+top: 0; left: 0; width: 100%; height: 100%; 
+background: #fff; 
+display: flex; flex-direction: column; justify-content: center; align-items: center; 
+z-index: 10; 
+}
+.btn, .dropdown-container, .setting-item { 
+width: 80%; 
+max-width: 240px; 
+box-sizing: border-box;
+margin: 8px auto; 
+display: block;
+}
+.btn { 
+padding: 12px; 
+border: none; border-radius: 8px; 
+font-size: clamp(16px, 4vw, 20px); 
+font-weight: bold; 
+cursor: pointer; color: #fff; text-align: center; 
+z-index: 5;
+}
+.btn-blue { background: #007bff; }
+.btn-gray { background: #5a6268; }
+.dropdown-container { position: relative; }
+#mode-current { width: 100%; margin: 0; } 
+#mode-dropdown { 
+position: absolute; top: 100%; left: 0; width: 100%; 
+background: #fff; border-radius: 0 0 8px 8px; 
+box-shadow: 0 4px 15px rgba(0,0,0,0.2); z-index: 20; 
+margin-top: -8px; overflow: hidden; border: 1px solid #ccc;
+box-sizing: border-box;
+}
+.mode-option { padding: 12px; color: #333; font-size: 16px; border-bottom: 1px solid #eee; cursor: pointer; text-align: center; }
+.setting-item { font-size: 16px; color: #333; cursor: pointer; border-bottom: 1px solid #ddd; padding-bottom: 8px; }
+.placeholder { color: #999; }
+.hidden { display: none; }
+.cursor::after { content: '|'; animation: blink 1s infinite; color: #007bff; font-weight: bold; }
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+</style>
+</head>
+<body>
+<div id="container">
+<div id="screen-start" class="ui-layer">
+<button class="btn btn-blue" onclick="startGame()">ゲーム開始</button>
+<div class="dropdown-container">
+<button id="mode-current" class="btn btn-gray" onclick="toggleModeList()">ノーマルモード</button>
+<div id="mode-dropdown" class="hidden">
+<div class="mode-option" onclick="selectMode('normal', 'ノーマルモード')">ノーマルモード</div>
+<div class="mode-option" onclick="selectMode('endless', 'エンドレスモード')">エンドレスモード</div>
+<div class="mode-option" onclick="selectMode('practice', '練習モード')">練習モード</div>
+</div>
+</div>
+<button class="btn btn-gray" onclick="showScreen('screen-setting')">ゲーム設定</button>
+</div>
+<div id="screen-setting" class="ui-layer hidden">
+<h2 style="color:#333">設定</h2>
+<div class="setting-item" onclick="toggleSound()">サウンド：<span id="sound-status">オン</span></div>
+<div class="setting-item" onclick="toggleColor()">カラー：<span id="color-status">通常</span></div>
+<div class="setting-item" onclick="startInput('keys')">キー：<span id="keys-display" class="placeholder">デフォルト：YBXA</span></div>
+<div class="setting-item" onclick="startInput('time')">時間：<span id="time-display" class="placeholder">デフォルト：20秒</span></div>
+<button class="btn btn-blue" onclick="finishSettings()">完了</button>
+</div>
+<canvas id="g"></canvas>
+</div>
+<script>
+const canvas = document.getElementById('g');
+const ctx = canvas.getContext('2d');
+const W = 360, H = 675;
+const COLS = 4, SIZE = W / COLS;
+canvas.width = W; canvas.height = H;
+let nt = new Image(); nt.src = 'NT.png';
+let tiles = [], score = 0, over = false, active = false;
+let config = { sound: true, greenBack: false, keys: ['y','b','x','a'], time: 20 };
+let currentMode = 'normal', timeLeft = 20, timerId = null, inputMode = null;
+function showScreen(id) {
+document.querySelectorAll('.ui-layer').forEach(el => el.classList.add('hidden'));
+if(id !== 'none') document.getElementById(id).classList.remove('hidden');
+}
+function toggleModeList() { document.getElementById('mode-dropdown').classList.toggle('hidden'); }
+function selectMode(val, label) { currentMode = val; document.getElementById('mode-current').innerText = label; toggleModeList(); }
+function toggleSound() { config.sound = !config.sound; document.getElementById('sound-status').innerText = config.sound ? 'オン' : 'オフ'; }
+function toggleColor() {
+config.greenBack = !config.greenBack;
+document.getElementById('color-status').innerText = config.greenBack ? 'グリーンバック' : '通常';
+const bg = config.greenBack ? '#00FF00' : '#fff';
+canvas.style.background = bg;
+document.getElementById('container').style.background = bg;
+document.querySelectorAll('.ui-layer').forEach(el => el.style.background = bg);
+}
+function startInput(type) {
+document.querySelectorAll('.setting-item span').forEach(s => s.classList.remove('cursor'));
+inputMode = type;
+const el = document.getElementById(type + '-display');
+el.innerHTML = ''; el.classList.add('cursor'); el.classList.remove('placeholder');
+if (type === 'keys') config.keys = []; else config.time = '';
+}
+function handleSettingInput(e) {
+if (!inputMode) return;
+const el = document.getElementById(inputMode + '-display');
+if (e.key === 'Backspace') {
+if (inputMode === 'keys') config.keys.pop();
+else config.time = config.time.toString().slice(0, -1);
+} else if (inputMode === 'keys' && config.keys.length < 4 && e.key.length === 1) {
+config.keys.push(e.key.toLowerCase());
+} else if (inputMode === 'time' && !isNaN(e.key) && e.key !== ' ') {
+config.time = (config.time || '') + e.key;
+}
+if (inputMode === 'keys') el.innerText = config.keys.join('').toUpperCase();
+else el.innerText = config.time + (config.time ? '秒' : '');
+}
+function finishSettings() {
+inputMode = null;
+document.querySelectorAll('.setting-item span').forEach(s => s.classList.remove('cursor'));
+if (!config.keys.length) { config.keys = ['y','b','x','a']; document.getElementById('keys-display').innerText = 'デフォルト：YBXA'; document.getElementById('keys-display').classList.add('placeholder'); }
+if (!config.time) { config.time = 20; document.getElementById('time-display').innerText = 'デフォルト：20秒'; document.getElementById('time-display').classList.add('placeholder'); }
+showScreen('screen-start');
+}
+function addTile(y) { tiles.push({ x: Math.floor(Math.random() * COLS), y: y }); }
+function playSound() { if (config.sound) new Audio('SanSanVoice.mp3').play().catch(()=>{}); }
+function startGame() {
+showScreen('none');
+tiles = []; score = 0; over = false; active = true;
+timeLeft = (currentMode === 'practice') ? 999 : parseInt(config.time);
+for (let i = 0; i < 8; i++) addTile(i);
+if (timerId) clearInterval(timerId);
+if (currentMode === 'normal') timerId = setInterval(() => { timeLeft--; if (timeLeft <= 0) endGame(); }, 1000);
+draw();
+}
+function endGame() { over = true; active = false; clearInterval(timerId); }
+function handleHit(colIdx) {
+if (!active || over) return;
+if (tiles[0].x === colIdx) {
+tiles.shift(); tiles.forEach(t => t.y--);
+addTile(tiles[tiles.length - 1].y + 1);
+score++; playSound();
+} else if (currentMode !== 'practice') endGame();
+}
+function draw() {
+if (!active && !over) return;
+ctx.clearRect(0, 0, W, H);
+if (!config.greenBack) {
+ctx.strokeStyle = '#ccc';
+for (let i = 0; i <= COLS; i++) {
+ctx.beginPath(); ctx.moveTo(i * SIZE, 0); ctx.lineTo(i * SIZE, H); ctx.stroke();
+}
+}
+tiles.forEach(t => {
+let yPos = H - (t.y + 1) * SIZE;
+if (yPos < H) ctx.drawImage(nt, t.x * SIZE + 2, yPos + 2, SIZE - 4, SIZE - 4);
+});
+ctx.fillStyle = 'red'; ctx.font = 'bold 24px sans-serif';
+ctx.fillText(`Score: ${score}`, 10, 35);
+if (currentMode === 'normal') ctx.fillText(`Time: ${timeLeft}`, 250, 35);
+if (over) {
+ctx.fillStyle = 'rgba(0,0,0,0.8)'; ctx.fillRect(0, 0, W, H);
+ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
+ctx.fillText('GAME OVER', W/2, H/2);
+ctx.fillText('Click to Title', W/2, H/2 + 40);
+ctx.textAlign = 'left';
+} else { requestAnimationFrame(draw); }
+}
+const getTouchPos = (e) => {
+const rect = canvas.getBoundingClientRect();
+const scaleX = W / rect.width;
+const scaleY = H / rect.height;
+const clientX = (e.touches ? e.touches[0].clientX : e.clientX);
+const clientY = (e.touches ? e.touches[0].clientY : e.clientY);
+return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
+};
+const handleAction = (e) => {
+if (over) return showScreen('screen-start');
+if (!active) return;
+const pos = getTouchPos(e);
+if (pos.y > H - SIZE) handleHit(Math.floor(pos.x / SIZE));
+};
+canvas.addEventListener('mousedown', handleAction);
+canvas.addEventListener('touchstart', (e) => { e.preventDefault(); handleAction(e); }, {passive: false});
+window.onkeydown = (e) => {
+if (inputMode) return handleSettingInput(e);
+const keyIdx = config.keys.indexOf(e.key.toLowerCase());
+if (keyIdx !== -1) handleHit(keyIdx);
+};
+nt.onload = () => showScreen('screen-start');
+</script>
+</body>
+</html>
